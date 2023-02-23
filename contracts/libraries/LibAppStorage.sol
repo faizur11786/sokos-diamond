@@ -24,23 +24,46 @@ struct Offer {
     uint256 paidTokens;
 }
 
+struct ERC1155Listing {
+    uint256 listingId;
+    address seller;
+    address tokenAddress;
+    uint256 tokenId;
+    uint256 quantity;
+    uint256 priceInWei;
+    uint256 timeCreated;
+    uint256 timeLastPurchased;
+    uint256 sourceListingId;
+    bool sold;
+    bool cancelled;
+}
+
 struct AppStorage {
+    ///////////////////////////////////////////
+    /// @notice Root
+    ///////////////////////////////////////////
+    mapping(address => bool) itemManagers;
+    ///////////////////////////////////////////
+    /// @notice MetaTx
+    ///////////////////////////////////////////
     mapping(address => uint256) metaNonces;
     bytes32 domainSeparator;
-    /// @notice Platform fee
+    ///////////////////////////////////////////
+    /// @notice Marketplace
+    ///////////////////////////////////////////
     uint16 platformFee;
-    /// @notice Platform mint fee
     uint256 mintFee;
-    /// @notice Platform fee receipient
     address payable feeReceipient;
-    ISokosRegistry sokosAddressRegistry;
+    mapping(address => address) erc20ToFeed;
     /// @notice NftAddress -> Token ID -> Owner -> Listing item
     mapping(address => mapping(uint256 => mapping(address => Listing))) listings;
     /// @notice NftAddress -> Token ID -> Offer
     mapping(address => mapping(uint256 => Offer)) offers;
     /// @notice Platform acceptable token ( Token address to Feed)
-    mapping(address => address) tokenToFeed;
-    mapping(address => bool) itemManagers;
+    uint256 listingFeeInWei;
+    uint256 nextListingId;
+    mapping(uint256 => ERC1155Listing) erc1155Listings;
+    mapping(address => mapping(uint256 => mapping(address => uint256))) erc1155TokenToListingId;
 }
 
 library LibAppStorage {
