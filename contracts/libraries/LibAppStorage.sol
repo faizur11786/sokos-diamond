@@ -30,6 +30,7 @@ struct ERC1155Listing {
     address tokenAddress;
     uint256 tokenId;
     uint256 quantity;
+    uint256 boughtQuantity;
     uint256 priceInWei;
     uint256 timeCreated;
     uint256 timeLastPurchased;

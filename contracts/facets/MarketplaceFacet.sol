@@ -2,13 +2,20 @@
 pragma solidity ^0.8.9;
 
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
+
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 import {AppStorage, ERC1155Listing, Modifiers} from "../libraries/LibAppStorage.sol";
 import {LibMeta} from "../libraries/LibMeta.sol";
 import {LibSharedMarketplace} from "../libraries/LibSharedMarketplace.sol";
+import {LibUtils} from "../libraries/LibUtils.sol";
+import {LibERC20} from "../libraries/LibERC20.sol";
 
-contract MarketplaceFacet is Modifiers, ReentrancyGuard {
+contract MarketplaceFacet is Modifiers {
+    bytes4 private constant _INTERFACE_ID_ERC2981 = 0x2a55205a;
+
+    event RoyaltiesPaid(address tokenAddress, uint256 tokenId, uint256 royaltyAmount);
     event PaymentOptionAdded(address _paytoken);
     event PaymentOptionRemoved(address _paytoken);
     event ChangedListingFee(uint256 listingFeeInWei);
@@ -21,6 +28,17 @@ contract MarketplaceFacet is Modifiers, ReentrancyGuard {
         uint256 priceInWei,
         uint256 time
     );
+    event ERC1155ExecutedListing(
+        uint256 indexed listingId,
+        address indexed seller,
+        address buyer,
+        address erc1155TokenAddress,
+        uint256 erc1155TypeId,
+        uint256 _quantity,
+        uint256 priceInWei,
+        uint256 time
+    );
+    event ERC1155ExecutedToRecipient(uint256 indexed listingId, address indexed buyer, address indexed recipient);
     event UpdateERC1155Listing(uint256 indexed listingId, address indexed tokenAddress, uint256 quantity, uint256 priceInWei, uint256 time);
 
     ///@notice Allow the sokos owner to set the default listing fee
@@ -33,23 +51,21 @@ contract MarketplaceFacet is Modifiers, ReentrancyGuard {
     /// @notice To Get ERC20's price feed address
     /// @param _token ERC20 token address
     /// @return Address of ERC20 token's price feed
-    function getERC20feed(address _token) internal view returns (address) {
+    function getERC20feed(address _token) external view returns (address) {
         return s.erc20ToFeed[_token];
     }
 
     /// @notice To Set ERC20 token price feed address
     /// @param _token ERC20 token address
     /// @param _feed Address of ERC20 token price feed
-    function setERC20Feed(address _token, address _feed) internal onlyOwner {
-        s.erc20ToFeed[_token] = _feed;
-        emit PaymentOptionAdded(_token);
+    function setERC20Feed(address _token, address _feed) external onlyOwner {
+        LibSharedMarketplace.setERC20Feed(_token, _feed);
     }
 
     /// @notice To remove ERC20 token price feed address
     /// @param _token ERC20 token address
-    function removeERC20Feed(address _token) internal onlyOwner {
-        delete s.erc20ToFeed[_token];
-        emit PaymentOptionRemoved(_token);
+    function removeERC20Feed(address _token) external onlyOwner {
+        LibSharedMarketplace.removeERC20Feed(_token);
     }
 
     /// @notice Method for listing NFT
@@ -81,6 +97,7 @@ contract MarketplaceFacet is Modifiers, ReentrancyGuard {
                 tokenAddress: _tokenAddress,
                 tokenId: _tokenId,
                 quantity: _quantity,
+                boughtQuantity: 0,
                 priceInWei: _priceInWei,
                 timeCreated: block.timestamp,
                 timeLastPurchased: 0,
@@ -143,6 +160,81 @@ contract MarketplaceFacet is Modifiers, ReentrancyGuard {
     ) external {
         for (uint256 i; i < _tokenIds.length; i++) {
             LibSharedMarketplace.updateERC1155Listing(_tokenAddress, _tokenIds[i], _owner);
+        }
+    }
+
+    ///@notice Allow a buyer to execcute an open listing i.e buy the NFT on behalf of the recipient. Also checks to ensure the item details match the listing.
+    ///@dev Will throw if the NFT has been sold or if the listing has been cancelled already
+    ///@param _listingId The identifier of the listing to execute
+    ///@param _tokenAddress The token contract address
+    ///@param _tokenId the erc1155 token id
+    ///@param _quantity The amount of ERC1155 NFTs execute/buy
+    ///@param _payToken The ERC20 token address
+    ///@param _priceInWei the cost price of the ERC1155 NFTs individually
+    ///@param _recipient the recipient of the item
+    function handleExecuteERC1155ListingWithERC20(
+        uint256 _listingId,
+        address _tokenAddress,
+        uint256 _tokenId,
+        uint256 _quantity,
+        address _payToken,
+        uint256 _priceInWei,
+        address _recipient
+    ) internal {
+        ERC1155Listing storage listing = s.erc1155Listings[_listingId];
+        require(listing.timeCreated != 0, "ERC1155Marketplace: listing not found");
+        require(listing.sold == false, "ERC1155Marketplace: listing is sold out");
+        require(listing.cancelled == false, "ERC1155Marketplace: listing is cancelled");
+        require(_priceInWei == listing.priceInWei, "ERC1155Marketplace: wrong price or price changed");
+        require(listing.tokenAddress == _tokenAddress, "ERC1155Marketplace: Incorrect token address");
+        require(listing.tokenId == _tokenId, "ERC1155Marketplace: Incorrect token id");
+        address buyer = LibMeta.msgSender();
+        address seller = listing.seller;
+        require(seller != buyer, "ERC1155Marketplace: buyer can't be seller");
+        require(_quantity > 0, "ERC1155Marketplace: _quantity can't be zero");
+        require(_quantity <= listing.quantity, "ERC1155Marketplace: quantity is greater than listing");
+        require(s.erc20ToFeed[_payToken] != address(0), "ERC1155Marketplace: ERC20 not acceptable");
+        uint256 cost = _quantity * _priceInWei;
+        require(IERC20(_payToken).balanceOf(buyer) >= cost, string(abi.encodePacked("ERC1155Markrtplace:", LibUtils.toAsciiString(_payToken))));
+        {
+            if (IERC2981(_tokenAddress).supportsInterface(_INTERFACE_ID_ERC2981)) {
+                (address royaltiesReceiver, uint256 royaltiesAmount) = IERC2981(_tokenAddress).royaltyInfo(_tokenId, cost);
+                if (royaltiesAmount > 0) {
+                    LibERC20.transferFrom(_payToken, buyer, royaltiesReceiver, royaltiesAmount);
+                    cost -= royaltiesAmount;
+                    emit RoyaltiesPaid(_tokenAddress, _tokenId, royaltiesAmount);
+                }
+                uint256 netCost = cost - s.platformFee;
+
+                LibERC20.transferFrom(_payToken, buyer, s.feeReceipient, s.platformFee);
+
+                LibERC20.transferFrom(_payToken, buyer, seller, netCost);
+            }
+
+            listing.quantity -= _quantity;
+            listing.boughtQuantity += _quantity;
+            listing.timeLastPurchased = block.timestamp;
+            if (listing.quantity == 0) {
+                listing.sold = true;
+                LibSharedMarketplace.removeERC1155ListingItem(_listingId);
+            }
+        }
+        IERC1155(listing.tokenAddress).safeTransferFrom(seller, _recipient, listing.tokenId, _quantity, new bytes(0));
+
+        emit ERC1155ExecutedListing(
+            _listingId,
+            seller,
+            _recipient,
+            listing.tokenAddress,
+            listing.tokenId,
+            _quantity,
+            listing.priceInWei,
+            block.timestamp
+        );
+
+        //Only emit if buyer is not recipient
+        if (buyer != _recipient) {
+            emit ERC1155ExecutedToRecipient(_listingId, buyer, _recipient);
         }
     }
 }
