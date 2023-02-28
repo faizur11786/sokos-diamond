@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISokosRegistry} from "../interfaces/ISokosRegistry.sol";
 import {LibDiamond} from "./LibDiamond.sol";
@@ -31,12 +32,26 @@ struct ERC1155Listing {
     uint256 tokenId;
     uint256 quantity;
     uint256 boughtQuantity;
-    uint256 priceInWei;
+    uint256 priceInUsd;
     uint256 timeCreated;
     uint256 timeLastPurchased;
     uint256 sourceListingId;
     bool sold;
     bool cancelled;
+}
+
+struct Bid {
+    address offerer;
+    address payToken;
+    uint256 quantity;
+    uint256 price;
+    uint256 expiresAt;
+    uint256 paidAmount;
+}
+
+struct TokenFeed {
+    address feed;
+    uint8 decimals;
 }
 
 struct AppStorage {
@@ -52,15 +67,13 @@ struct AppStorage {
     ///////////////////////////////////////////
     /// @notice Marketplace
     ///////////////////////////////////////////
-    uint16 platformFee;
+    uint16 sokosFee;
+    uint8 sokosDecimals;
     uint256 mintFee;
     address payable feeReceipient;
-    mapping(address => address) erc20ToFeed;
-    /// @notice NftAddress -> Token ID -> Owner -> Listing item
-    mapping(address => mapping(uint256 => mapping(address => Listing))) listings;
-    /// @notice NftAddress -> Token ID -> Offer
-    mapping(address => mapping(uint256 => Offer)) offers;
-    /// @notice Platform acceptable token ( Token address to Feed)
+    address ethPriceFeed;
+    mapping(address => TokenFeed) tokenToFeed;
+    mapping(address => mapping(uint256 => Bid)) bids;
     uint256 listingFeeInWei;
     uint256 nextListingId;
     mapping(uint256 => ERC1155Listing) erc1155Listings;
@@ -68,12 +81,9 @@ struct AppStorage {
 }
 
 library LibAppStorage {
-    bytes32 constant APP_STORAGE_POSITION = keccak256("diamond.standard.app.storage");
-
-    function getStorage() internal pure returns (AppStorage storage ds) {
-        bytes32 position = APP_STORAGE_POSITION;
+    function getStorage() internal pure returns (AppStorage storage s) {
         assembly {
-            ds.slot := position
+            s.slot := 0
         }
     }
 }
@@ -98,5 +108,9 @@ contract Modifiers {
             "LibAppStorage: only an Owner or ItemManager can call this function"
         );
         _;
+    }
+
+    function getSokosDecimals() public view returns (uint8) {
+        return s.sokosDecimals;
     }
 }

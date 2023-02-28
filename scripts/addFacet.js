@@ -7,13 +7,13 @@ async function main () {
   const accounts = await ethers.getSigners()
   const contractOwner = accounts[0]
 
-  const diamond = {address:"0x6255E92B3548B165F1fc6d5A06C4B760b9456907"}
+  const diamond = {address:"0x428368456ff18ed34be652d98014311A468797E5"}
 
   // deploy facets
   console.log('')
   console.log('Deploying facets')
   const FacetNames = [
-    'MarketplaceFacet'
+    'MarketplaceOnlyOwnerFacet'
   ]
   const cut = []
   for (const FacetName of FacetNames) {
@@ -21,11 +21,11 @@ async function main () {
     // const facet = await Facet.deploy()
     // await facet.deployed()
     // console.log(`${FacetName} deployed: ${facet.address}`)
-    const facet = await ethers.getContractAt(FacetName, "0x3E4119644E7800c0d44d406D28f3e673313598fd")
+    const facet = await ethers.getContractAt(FacetName, "0x6034C4d2F47053BD05994c91b6134E7988Ee27DC")
     cut.push({
       facetAddress: facet.address,
       action: FacetCutAction.Add,
-      functionSelectors: getSelectors(facet)
+      functionSelectors: getSelectors(facet).get(["setSokosDecimals(uint8)","setListingFee(uint256)","setEthPriceFeed(address)","setERC20Feed(address,address,uint8)","removeERC20Feed(address)"])
     })
   }
   // upgrade diamond with facets
@@ -35,7 +35,7 @@ async function main () {
   let tx
   let receipt
   // call to init function
-  const diamondInit = await ethers.getContractAt('DiamondInit', "0x71f924f9be65c293eaE06c800D336e1e06767733")
+  const diamondInit = await ethers.getContractAt('DiamondInit', "0x26Ce00D0D5a33bE5EF382363422712a69551E6e9")
   let functionCall = diamondInit.interface.encodeFunctionData('init')
   console.log("functionCall", functionCall)
   tx = await diamondCut.diamondCut(cut, diamondInit.address, functionCall)

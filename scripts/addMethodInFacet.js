@@ -6,7 +6,7 @@ const { getSelectors, FacetCutAction } = require('./libraries/diamond.js')
 async function main () {
   const accounts = await ethers.getSigners()
   const contractOwner = accounts[0]
-  const diamond = {address:"0x6255E92B3548B165F1fc6d5A06C4B760b9456907"}
+  const diamond = {address:"0x428368456ff18ed34be652d98014311A468797E5"}
 
   const FacetNames = [
     'MarketplaceFacet'
