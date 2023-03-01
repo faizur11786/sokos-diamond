@@ -11,8 +11,17 @@ library LibMarketplace {
     event PaymentOptionRemoved(address _paytoken);
     event ERC1155ListingCancelled(uint256 indexed listingId, uint256 time);
     event ERC1155ListingRemoved(uint256 indexed listingId, uint256 time);
-    event UpdateERC1155Listing(uint256 indexed listingId, uint256 quantity, uint256 priceInUsd, uint256 time);
-    event BidCancelled(address indexed bidder, address indexed tokenAddress, uint256 tokenId);
+    event UpdateERC1155Listing(
+        uint256 indexed listingId,
+        uint256 quantity,
+        uint256 priceInUsd,
+        uint256 time
+    );
+    event BidCancelled(
+        address indexed bidder,
+        address indexed tokenAddress,
+        uint256 tokenId
+    );
 
     function setTokenFeed(
         address _token,
@@ -47,6 +56,13 @@ library LibMarketplace {
     function removeERC1155ListingItem(uint256 _listingId) internal {
         AppStorage storage s = LibAppStorage.getStorage();
         delete s.erc1155Listings[_listingId];
+        for (uint256 i; i < s.listingIds.length; i++) {
+            uint256 listing = s.listingIds[i];
+            if (listing == _listingId) {
+                s.listingIds[i] = s.listingIds[s.listingIds.length - 1];
+                s.listingIds.pop();
+            }
+        }
         emit ERC1155ListingRemoved(_listingId, block.timestamp);
     }
 
@@ -56,20 +72,34 @@ library LibMarketplace {
         address _owner
     ) internal {
         AppStorage storage s = LibAppStorage.getStorage();
-        uint256 listingId = s.erc1155TokenToListingId[_tokenAddress][_tokenId][_owner];
+        uint256 listingId = s.erc1155TokenToListingId[_tokenAddress][_tokenId][
+            _owner
+        ];
         if (listingId == 0) {
             return;
         }
         ERC1155Listing storage listing = s.erc1155Listings[listingId];
-        if (listing.timeCreated == 0 || listing.cancelled == true || listing.sold == true) {
+        if (
+            listing.timeCreated == 0 ||
+            listing.cancelled == true ||
+            listing.sold == true
+        ) {
             return;
         }
         uint256 quantity = listing.quantity;
         if (quantity > 0) {
-            quantity = IERC1155(listing.tokenAddress).balanceOf(listing.seller, listing.tokenId);
+            quantity = IERC1155(listing.tokenAddress).balanceOf(
+                listing.seller,
+                listing.tokenId
+            );
             if (quantity < listing.quantity) {
                 listing.quantity = quantity;
-                emit UpdateERC1155Listing(listingId, quantity, listing.priceInUsd, block.timestamp);
+                emit UpdateERC1155Listing(
+                    listingId,
+                    quantity,
+                    listing.priceInUsd,
+                    block.timestamp
+                );
             }
         }
         if (quantity == 0) {

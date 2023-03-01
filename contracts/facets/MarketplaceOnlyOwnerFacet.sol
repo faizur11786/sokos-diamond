@@ -40,7 +40,10 @@ contract MarketplaceOnlyOwnerFacet is Modifiers {
     /// @notice To remove ERC20 token price feed address
     /// @param _token ERC20 token address
     function removeTokenFeed(address _token) external onlyOwner {
-        require(s.tokenToFeed[_token].feed != address(0), "ERC1155Marketplace: token feed does not exist");
+        require(
+            s.tokenToFeed[_token].feed != address(0),
+            "ERC1155Marketplace: token feed does not exist"
+        );
         LibMarketplace.removeTokenFeed(_token);
     }
 }

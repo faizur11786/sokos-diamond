@@ -6,11 +6,24 @@ import {AppStorage} from "../libraries/LibAppStorage.sol";
 contract MetaTransactionsFacet {
     AppStorage internal s;
 
-    bytes32 private constant META_TRANSACTION_TYPEHASH = keccak256(bytes("MetaTransaction(uint256 nonce,address from,bytes functionSignature)"));
+    bytes32 private constant META_TRANSACTION_TYPEHASH =
+        keccak256(
+            bytes(
+                "MetaTransaction(uint256 nonce,address from,bytes functionSignature)"
+            )
+        );
 
-    event MetaTransactionExecuted(address userAddress, address payable relayerAddress, bytes functionSignature);
+    event MetaTransactionExecuted(
+        address userAddress,
+        address payable relayerAddress,
+        bytes functionSignature
+    );
 
-    function convertBytesToBytes4(bytes memory inBytes) internal pure returns (bytes4 outBytes4) {
+    function convertBytesToBytes4(bytes memory inBytes)
+        internal
+        pure
+        returns (bytes4 outBytes4)
+    {
         if (inBytes.length == 0) {
             return 0x0;
         }
@@ -31,12 +44,31 @@ contract MetaTransactionsFacet {
      * "\\x19" makes the encoding deterministic
      * "\\x01" is the version byte to make it compatible to EIP-191
      */
-    function toTypedMessageHash(bytes32 messageHash) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked("\x19\x01", getDomainSeparator(), messageHash));
+    function toTypedMessageHash(bytes32 messageHash)
+        internal
+        view
+        returns (bytes32)
+    {
+        return
+            keccak256(
+                abi.encodePacked("\x19\x01", getDomainSeparator(), messageHash)
+            );
     }
 
-    function hashMetaTransaction(MetaTransaction memory metaTx) internal pure returns (bytes32) {
-        return keccak256(abi.encode(META_TRANSACTION_TYPEHASH, metaTx.nonce, metaTx.from, keccak256(metaTx.functionSignature)));
+    function hashMetaTransaction(MetaTransaction memory metaTx)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return
+            keccak256(
+                abi.encode(
+                    META_TRANSACTION_TYPEHASH,
+                    metaTx.nonce,
+                    metaTx.from,
+                    keccak256(metaTx.functionSignature)
+                )
+            );
     }
 
     ///@notice Query the latest nonce of an address
@@ -53,7 +85,12 @@ contract MetaTransactionsFacet {
         bytes32 sigS,
         uint8 sigV
     ) internal view returns (bool) {
-        address signer = ecrecover(toTypedMessageHash(hashMetaTransaction(metaTx)), sigV, sigR, sigS);
+        address signer = ecrecover(
+            toTypedMessageHash(hashMetaTransaction(metaTx)),
+            sigV,
+            sigR,
+            sigS
+        );
         require(signer != address(0), "Invalid signature");
         return signer == user;
     }
@@ -77,16 +114,32 @@ contract MetaTransactionsFacet {
         uint8 sigV
     ) public payable returns (bytes memory) {
         bytes4 destinationFunctionSig = convertBytesToBytes4(functionSignature);
-        require(destinationFunctionSig != msg.sig, "functionSignature can not be of executeMetaTransaction method");
+        require(
+            destinationFunctionSig != msg.sig,
+            "functionSignature can not be of executeMetaTransaction method"
+        );
         uint256 nonce = s.metaNonces[userAddress];
-        MetaTransaction memory metaTx = MetaTransaction({nonce: nonce, from: userAddress, functionSignature: functionSignature});
-        require(verify(userAddress, metaTx, sigR, sigS, sigV), "Signer and signature do not match");
+        MetaTransaction memory metaTx = MetaTransaction({
+            nonce: nonce,
+            from: userAddress,
+            functionSignature: functionSignature
+        });
+        require(
+            verify(userAddress, metaTx, sigR, sigS, sigV),
+            "Signer and signature do not match"
+        );
         s.metaNonces[userAddress] = nonce + 1;
         // Append userAddress at the end to extract it from calling context
-        (bool success, bytes memory returnData) = address(this).call(abi.encodePacked(functionSignature, userAddress));
+        (bool success, bytes memory returnData) = address(this).call(
+            abi.encodePacked(functionSignature, userAddress)
+        );
 
         require(success, "Function call not successful");
-        emit MetaTransactionExecuted(userAddress, payable(msg.sender), functionSignature);
+        emit MetaTransactionExecuted(
+            userAddress,
+            payable(msg.sender),
+            functionSignature
+        );
         return returnData;
     }
 }

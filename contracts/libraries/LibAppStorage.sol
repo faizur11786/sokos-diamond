@@ -78,6 +78,7 @@ struct AppStorage {
     uint256 nextListingId;
     mapping(uint256 => ERC1155Listing) erc1155Listings;
     mapping(address => mapping(uint256 => mapping(address => uint256))) erc1155TokenToListingId;
+    uint256[] listingIds;
 }
 
 library LibAppStorage {
