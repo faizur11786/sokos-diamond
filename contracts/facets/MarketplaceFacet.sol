@@ -81,20 +81,16 @@ contract MarketplaceFacet is Modifiers {
     }
 
     /// @notice To Get ERC20 token value in USD
-    /// @param _token ERC20 token address
+    /// @param _feed chainlink price feed address
     /// @param _cost Number of tokens
     /// @return Token value in USD
-    function getTokenRate(address _token, uint256 _cost)
+    function getTokenRate(address _feed, uint256 _cost)
         public
         view
         returns (uint256)
     {
-        TokenFeed storage tokenFeed = s.tokenToFeed[_token];
-        require(
-            tokenFeed.feed != address(0),
-            "ERC1155Marketplace: ERC20 not acceptable"
-        );
-        uint256 tokenPrice = LibChainlink.getPrice(tokenFeed.feed);
+        require(_feed != address(0), "Invalid feed address");
+        uint256 tokenPrice = LibChainlink.getPrice(_feed);
         uint256 priceInUSD = (tokenPrice * _cost) / 1e18;
         return priceInUSD;
     }
@@ -362,7 +358,6 @@ contract MarketplaceFacet is Modifiers {
     ///@param _tokenId the erc1155 token id
     ///@param _quantity The amount of ERC1155 NFTs execute/buy
     ///@param _payToken The ERC20 token address
-    ///@param _priceInUsd the cost price of the ERC1155 NFTs individually
     ///@param _recipient the recipient of the item
     function executeERC1155ListingWithERC20(
         uint256 _listingId,
@@ -370,7 +365,6 @@ contract MarketplaceFacet is Modifiers {
         uint256 _tokenId,
         uint256 _quantity,
         address _payToken,
-        uint256 _priceInUsd,
         address _recipient
     ) external {
         ERC1155Listing storage listing = s.erc1155Listings[_listingId];
@@ -387,10 +381,6 @@ contract MarketplaceFacet is Modifiers {
             "ERC1155Marketplace: listing is cancelled"
         );
         require(
-            listing.priceInUsd == _priceInUsd,
-            "ERC1155Marketplace: wrong price or price changed"
-        );
-        require(
             listing.tokenAddress == _tokenAddress,
             "ERC1155Marketplace: Incorrect token address"
         );
@@ -405,20 +395,26 @@ contract MarketplaceFacet is Modifiers {
         );
         address buyer = LibMeta.msgSender();
         address seller = listing.seller;
+
         require(seller != buyer, "ERC1155Marketplace: buyer can't be seller");
+
         TokenFeed memory tokenFeed = s.tokenToFeed[_payToken];
+
         require(
             tokenFeed.feed != address(0),
             "ERC1155Marketplace: ERC20 not acceptable"
         );
-        uint256 costInWei = _quantity *
-            (_priceInUsd * (10**(tokenFeed.decimals - s.sokosDecimals)));
-
+        uint256 costInWei = getTokenRate(
+            tokenFeed.feed,
+            _quantity *
+                (listing.priceInUsd *
+                    (10**(tokenFeed.decimals - s.sokosDecimals)))
+        );
         require(
             IERC20(_payToken).balanceOf(buyer) >= costInWei,
             string(
                 abi.encodePacked(
-                    "ERC1155Markrtplace: not enough",
+                    "ERC1155Markrtplace: not enough ",
                     LibUtils.toAsciiString(_payToken)
                 )
             )
@@ -428,6 +424,9 @@ contract MarketplaceFacet is Modifiers {
             "ERC1155Marketplace: tokens spend approved not enough"
         );
 
+        uint256 fee = s.sokosFee;
+        uint256 netCost = costInWei - fee;
+
         {
             if (
                 IERC2981(_tokenAddress).supportsInterface(_INTERFACE_ID_ERC2981)
@@ -435,6 +434,7 @@ contract MarketplaceFacet is Modifiers {
                 (address royaltiesReceiver, uint256 royaltiesAmount) = IERC2981(
                     _tokenAddress
                 ).royaltyInfo(_tokenId, costInWei);
+                require(royaltiesReceiver != address(0), "Address Zero");
                 if (royaltiesAmount > 0) {
                     LibERC20.transferFrom(
                         _payToken,
@@ -449,22 +449,23 @@ contract MarketplaceFacet is Modifiers {
                         royaltiesAmount
                     );
                 }
-                uint256 fee = s.sokosFee;
-                uint256 netCost = costInWei - fee;
-
-                LibERC20.transferFrom(_payToken, buyer, s.feeReceipient, fee);
-
-                LibERC20.transferFrom(_payToken, buyer, seller, netCost);
             }
+            if (s.feeReceipient != address(0)) {
+                LibERC20.transferFrom(_payToken, buyer, s.feeReceipient, fee);
+            }
+
+            LibERC20.transferFrom(_payToken, buyer, seller, netCost);
 
             listing.quantity -= _quantity;
             listing.boughtQuantity += _quantity;
             listing.timeLastPurchased = block.timestamp;
+
             if (listing.quantity == 0) {
                 listing.sold = true;
                 LibMarketplace.removeERC1155ListingItem(_listingId);
             }
         }
+
         IERC1155(listing.tokenAddress).safeTransferFrom(
             seller,
             _recipient,

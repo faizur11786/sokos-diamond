@@ -8,15 +8,35 @@ async function main() {
     const contractOwner = accounts[0];
 
     const diamond = { address: "0xD43040F9562c7Fd9be370986960CAa6b91EFD084" };
-
+    console.log("Caller Address...", contractOwner.address);
     // deploy facets
     console.log("");
     console.log("Running...");
     const FacetName = "MarketplaceFacet";
     const facet = await ethers.getContractAt(FacetName, diamond.address);
-    const listings = await facet.getERC1155Listings2();
 
-    console.log("facet", listings);
+    const gasPrice = ethers.utils.parseUnits("226.9", "gwei");
+
+    // console.log(
+    //     "facet",
+    //     await facet.estimateGas.executeERC1155ListingWithERC20(
+    //         "1",
+    //         "0xcc6d6f15c3fffc3e4825bc528afdc5514c84ad52",
+    //         "1",
+    //         "2",
+    //         "0xfa22C55711a4aED74E46ACfe4B171e02386444bf",
+    //         contractOwner.address
+    //     )
+    // );
+    const tx = await facet.executeERC1155ListingWithERC20(
+        "4",
+        "0xcc6d6f15c3fffc3e4825bc528afdc5514c84ad52",
+        "3",
+        "9",
+        "0xfa22C55711a4aED74E46ACfe4B171e02386444bf",
+        contractOwner.address
+    );
+    console.log("facet", tx);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

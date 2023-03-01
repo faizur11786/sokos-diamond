@@ -12,7 +12,7 @@ async function main() {
     // deploy facets
     console.log("");
     console.log("Deploying facets");
-    const FacetNames = ["MarketplaceOnlyOwnerFacet"];
+    const FacetNames = ["MarketplaceFacet"];
     const cut = [];
     for (const FacetName of FacetNames) {
         // const Facet = await ethers.getContractFactory(FacetName)
@@ -21,17 +21,13 @@ async function main() {
         // console.log(`${FacetName} deployed: ${facet.address}`)
         const facet = await ethers.getContractAt(
             FacetName,
-            "0xE994CA40d644A436cC2A9d290c1910502bfb29D8"
+            "0xb1ccdd48dd4de27198ae37338d94b1da93b89338"
         );
         cut.push({
             facetAddress: facet.address,
             action: FacetCutAction.Add,
             functionSelectors: getSelectors(facet).get([
-                "setSokosDecimals(uint8)",
-                "setListingFee(uint256)",
-                "setEthPriceFeed(address)",
-                "setTokenFeed(address,address,uint8)",
-                "removeTokenFeed(address)",
+                "getTokenRate(address,uint256)",
             ]),
         });
     }
@@ -44,14 +40,8 @@ async function main() {
     );
     let tx;
     let receipt;
-    // call to init function
-    const diamondInit = await ethers.getContractAt(
-        "DiamondInit",
-        "0x98a1C75d6E80Ffe8182040dD1EbF27C2Ab6Bcb10"
-    );
-    let functionCall = diamondInit.interface.encodeFunctionData("init");
-    console.log("functionCall", functionCall);
-    tx = await diamondCut.diamondCut(cut, diamondInit.address, functionCall);
+
+    tx = await diamondCut.diamondCut(cut, ethers.constants.AddressZero, "0x");
     console.log("Diamond cut tx: ", tx.hash);
     receipt = await tx.wait();
     if (!receipt.status) {

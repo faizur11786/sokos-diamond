@@ -46,4 +46,19 @@ contract MarketplaceOnlyOwnerFacet is Modifiers {
         );
         LibMarketplace.removeTokenFeed(_token);
     }
+
+    /// @notice To remove ERC20 token price feed address
+    /// @param _receipient Tx fee receipient address
+    function setFeeReceipient(address _receipient, uint16 _fee)
+        external
+        onlyOwner
+    {
+        s.feeReceipient = payable(_receipient);
+        s.sokosFee = _fee;
+    }
+
+    /// @notice To remove ERC20 token price feed address
+    function getFeeReceipient() external view returns (address) {
+        return s.feeReceipient;
+    }
 }
